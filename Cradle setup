@@ -1,0 +1,89 @@
+#include <Servo.h>
+
+// --- Component Definitions ---
+Servo myServo;
+#define BUZZER1_ALERT    4  // This buzzer is for environmental alerts
+#define BUZZER2_SOOTHE   5  // This buzzer is for the soothing sound
+#define SERVO_PIN        9  // Servo control pin
+#define TEMP_PIN         A0 // The pin for the TMP36 analog output
+#define MOISTURE_PIN     A1 // Moisture sensor analog pin
+#define SOUND_SENSOR_PIN 6  // Sound sensor digital pin
+
+// --- State Management Variables ---
+boolean isRocking = false; // Tracks if the cradle is currently rocking
+unsigned long rockingStartTime; // Stores when the rocking began
+const long rockingDuration = 15000; // Rock for 15 seconds
+
+void setup() {
+  pinMode(BUZZER1_ALERT, OUTPUT);
+  pinMode(BUZZER2_SOOTHE, OUTPUT);
+  pinMode(SOUND_SENSOR_PIN, INPUT);
+  
+  myServo.attach(SERVO_PIN);
+  myServo.write(90); // Start the servo in the middle
+  
+  Serial.begin(9600);
+  
+  Serial.println("iCradle System Initialized. Waiting for cry...");
+}
+
+void loop() {
+  // 1. Read all sensor values
+  
+  // Read the TMP36 sensor value and calculate temperature
+  int tempReading = analogRead(TEMP_PIN);
+  float voltage = tempReading * 5.0 / 1023.0;
+  float temperatureC = (voltage - 0.5) * 100; // Temperature in Celsius
+  
+  // ** NEW: Convert Celsius to Fahrenheit **
+  float temperatureF = (temperatureC * 9.0 / 5.0) + 32.0;
+  
+  int moistureValue = analogRead(MOISTURE_PIN);
+  int soundState = digitalRead(SOUND_SENSOR_PIN);
+
+  // Print sensor values for debugging
+  Serial.print("Temperature: ");
+  Serial.print(temperatureF); // ** CHANGED to print Fahrenheit **
+  Serial.print("°F  Moisture: ");
+  Serial.print(moistureValue);
+  Serial.print("  Sound State: ");
+  Serial.println(soundState);
+
+  // --- Main Logic ---
+
+  // Check for a cry, but ONLY if the cradle is not already rocking.
+  if (soundState == LOW && !isRocking) {
+    Serial.println("Cry Detected! Starting to rock...");
+    isRocking = true; // Start the rocking state
+    rockingStartTime = millis(); // Record the start time
+  }
+
+  // Handle the rocking state
+  if (isRocking) {
+    // Check if the rocking duration is over
+    if (millis() - rockingStartTime < rockingDuration) {
+      // If time has NOT passed, continue rocking
+      myServo.write(75);
+      tone(BUZZER2_SOOTHE, 500, 200); // Play a soothing tone
+      delay(250);
+      myServo.write(105);
+      delay(250);
+    } else {
+      // If the time IS up, stop everything.
+      Serial.println("Rocking time over. Stopping.");
+      isRocking = false;      // Exit the rocking state
+      myServo.write(90);      // Return servo to center
+      noTone(BUZZER2_SOOTHE); // Stop the soothing sound
+    }
+  }
+
+  // --- Secondary Alerts on BUZZER1 for Moisture ---
+  if (moistureValue > 700) {
+    digitalWrite(BUZZER1_ALERT, HIGH); // Turn on the alert buzzer
+  } else {
+    digitalWrite(BUZZER1_ALERT, LOW);  // Turn off the alert buzzer
+  }
+
+  // A small delay to keep the serial monitor from flooding
+  delay(700); 
+}
